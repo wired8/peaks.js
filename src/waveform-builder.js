@@ -149,7 +149,6 @@ define([
   /* eslint-enable max-len */
 
   WaveformBuilder.prototype._getRemoteWaveformData = function(options, callback) {
-    var self = this;
     var dataUri = null;
     var requestType = null;
     var url;
@@ -182,33 +181,37 @@ define([
       return;
     }
 
-    var xhr = self._createXHR(url, requestType, options.withCredentials, function(event) {
-      if (this.readyState !== 4) {
-        return;
-      }
+    var fetchHeaders = new Headers();
 
-      if (this.status !== 200) {
-        callback(
-          new Error('Unable to fetch remote data. HTTP status ' + this.status)
-        );
+    var fetchOptions = {
+      method: 'GET',
+      headers: fetchHeaders,
+      mode: 'cors',
+      credentials: 'same-origin',
+      cache: 'no-cache',
+      redirect: 'follow',
+      referrer: 'client',
+      responseType: requestType
+    };
 
-        return;
-      }
+    fetch(new Request(url), fetchOptions)
+      .then(
+        function(response) {
+          return requestType === 'ArrayBuffer' ? response.arrayBuffer() : response.json();
+        })
+      .then(function(data) {
+        var waveformData = WaveformData.create(data);
 
-      var waveformData = WaveformData.create(event.target.response);
+        if (waveformData.channels !== 1 && waveformData.channels !== 2) {
+          callback(new Error('Peaks.init(): Only mono or stereo waveforms are currently supported'));
+          return;
+        }
 
-      if (waveformData.channels !== 1 && waveformData.channels !== 2) {
-        callback(new Error('Peaks.init(): Only mono or stereo waveforms are currently supported'));
-        return;
-      }
-
-      callback(null, waveformData);
-    },
-    function() {
-      callback(new Error('XHR Failed'));
-    });
-
-    xhr.send();
+        callback(null, waveformData);
+      })
+      .catch(function() {
+        callback(new Error('Fetch Failed'));
+      });
   };
 
   /* eslint-disable max-len */
@@ -358,33 +361,36 @@ define([
       return;
     }
 
-    var xhr = self._createXHR(url, 'arraybuffer', withCredentials, function(event) {
-      if (this.readyState !== 4) {
-        return;
-      }
+    var fetchHeaders = new Headers();
 
-      if (this.status !== 200) {
-        callback(
-          new Error('Unable to fetch remote data. HTTP status ' + this.status)
-        );
+    var fetchOptions = {
+      method: 'GET',
+      headers: fetchHeaders,
+      mode: 'cors',
+      credentials: 'same-origin',
+      cache: 'no-cache',
+      redirect: 'follow',
+      referrer: 'client',
+      responseType: 'arraybuffer'
+    };
 
-        return;
-      }
+    fetch(new Request(url), fetchOptions)
+      .then(function(response) {
+        return response.arrayBuffer();
+      })
+      .then(function(buffer) {
+        var webAudioBuilderOptions = {
+          audio_context: webAudio.audioContext,
+          array_buffer: buffer,
+          split_channels: webAudio.multiChannel,
+          scale: webAudio.scale
+        };
 
-      var webAudioBuilderOptions = {
-        audio_context: webAudio.audioContext,
-        array_buffer: event.target.response,
-        split_channels: webAudio.multiChannel,
-        scale: webAudio.scale
-      };
-
-      WaveformData.createFromAudio(webAudioBuilderOptions, callback);
-    },
-    function() {
-      callback(new Error('XHR Failed'));
-    });
-
-    xhr.send();
+        WaveformData.createFromAudio(webAudioBuilderOptions, callback);
+      })
+      .catch(function() {
+        callback(new Error('Fetch Failed'));
+      });
   };
 
   /**
